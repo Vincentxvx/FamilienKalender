@@ -197,6 +197,10 @@
         <label for="fWer">Wer?</label>
         <select id="fWer" required></select>
       </div>
+      <div>
+        <label for="fBisDatum">Bis (nur bei mehrtägigen Terminen, z. B. Urlaub)</label>
+        <input id="fBisDatum" type="date">
+      </div>
       <div class="zeit-zeile">
         <div>
           <label for="fVon">Von</label>
@@ -259,6 +263,10 @@ anzeigeMonat = heute.getMonth();
 const MONATE = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 const iso = (j,m,t) => `${j}-${String(m+1).padStart(2,"0")}-${String(t).padStart(2,"0")}`;
 const mitglied = id => FAMILIE.find(m => m.id === id);
+// Fällt Termin e auf den Tag dIso? (mehrtägige Termine laufen von datum bis datumBis)
+const faelltAuf = (e, dIso) => dIso >= e.datum && dIso <= (e.datumBis || e.datum);
+const istMehrtaegig = e => e.datumBis && e.datumBis !== e.datum;
+const kurzDatum = isoStr => `${isoStr.slice(8,10)}.${isoStr.slice(5,7)}.`;
 
 /* ---------- Firebase verbinden ---------- */
 if (firebaseConfig.apiKey === "HIER_EINTRAGEN") {
@@ -339,8 +347,11 @@ function zeichneMonat() {
       zelle.appendChild(nr);
 
       const desTages = termine
-        .filter(e => e.datum === dIso && aktiveMitglieder.has(e.wer))
-        .sort((a,b) => (a.von || "99") < (b.von || "99") ? -1 : 1);
+        .filter(e => faelltAuf(e, dIso) && aktiveMitglieder.has(e.wer))
+        .sort((a,b) => {
+          if (istMehrtaegig(a) !== istMehrtaegig(b)) return istMehrtaegig(a) ? -1 : 1;
+          return (a.von || "99") < (b.von || "99") ? -1 : 1;
+        });
 
       const marker = document.createElement("span");
       marker.className = "marker";
@@ -395,6 +406,7 @@ function oeffneTag(dIso, d) {
     d.toLocaleDateString("de-DE", { weekday:"long", day:"numeric", month:"long", year:"numeric" });
   fuelleTagesListe(dIso);
   document.getElementById("neuForm").reset();
+  document.getElementById("fBisDatum").min = dIso;
   dialog.showModal();
 }
 document.getElementById("dialogZu").addEventListener("click", () => dialog.close());
@@ -404,8 +416,11 @@ function fuelleTagesListe(dIso) {
   const liste = document.getElementById("tagesListe");
   liste.innerHTML = "";
   const desTages = termine
-    .filter(e => e.datum === dIso)
-    .sort((a,b) => (a.von || "99") < (b.von || "99") ? -1 : 1);
+    .filter(e => faelltAuf(e, dIso))
+    .sort((a,b) => {
+      if (istMehrtaegig(a) !== istMehrtaegig(b)) return istMehrtaegig(a) ? -1 : 1;
+      return (a.von || "99") < (b.von || "99") ? -1 : 1;
+    });
   if (desTages.length === 0) {
     liste.innerHTML = `<p class="leer-hinweis">Noch keine Termine – trag unten den ersten ein.</p>`;
     return;
@@ -413,7 +428,12 @@ function fuelleTagesListe(dIso) {
   for (const e of desTages) {
     const zeile = document.createElement("div");
     zeile.className = "tages-eintrag";
-    const zeit = e.von ? (e.von + (e.bis ? "–" + e.bis : "") + " Uhr") : "ganztägig";
+    let zeit;
+    if (istMehrtaegig(e)) {
+      zeit = `${kurzDatum(e.datum)} – ${kurzDatum(e.datumBis)}`;
+    } else {
+      zeit = e.von ? (e.von + (e.bis ? "–" + e.bis : "") + " Uhr") : "ganztägig";
+    }
     zeile.innerHTML = `
       <span class="punkt" style="background:${mitglied(e.wer)?.farbe || "#888"}"></span>
       <span class="info">
@@ -441,10 +461,17 @@ document.getElementById("neuForm").addEventListener("submit", async (ev) => {
   if (!offenesDatum) return;
   const titel = document.getElementById("fTitel").value.trim();
   if (!titel) return;
+  let datumBis = document.getElementById("fBisDatum").value || "";
+  if (datumBis && datumBis < offenesDatum) {
+    alert("Das Enddatum liegt vor dem Starttag – bitte korrigieren.");
+    return;
+  }
+  if (datumBis === offenesDatum) datumBis = "";
   const neu = {
     datum: offenesDatum,
     titel,
     wer: fWer.value,
+    datumBis,
     von: document.getElementById("fVon").value || "",
     bis: document.getElementById("fBis").value || "",
   };
