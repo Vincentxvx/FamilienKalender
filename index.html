@@ -626,6 +626,7 @@ function fuelleTagesListe(dIso) {
       if (!db) return;
       if (confirm(`„${e.titel}" wirklich löschen?`)) {
         await deleteDoc(doc(db, "termine", e.id));
+        dialog.close();
       }
     });
     zeile.appendChild(loeschKnopf);
