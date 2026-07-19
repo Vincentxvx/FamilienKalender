@@ -32,6 +32,19 @@
     padding:20px 16px 14px;
   }
   .kopf-innen{max-width:980px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px}
+  .abmelden{
+    margin-left:auto;background:transparent;border:1.5px solid rgba(255,255,255,.5);
+    color:var(--weiss);padding:6px 14px;border-radius:999px;font-weight:600;font-size:.9rem;
+  }
+  .abmelden:hover{border-color:var(--weiss)}
+  #anmeldung{
+    max-width:400px;margin:40px auto;background:var(--weiss);border:1.5px solid var(--linie);
+    border-radius:var(--radius);padding:24px;display:flex;flex-direction:column;gap:6px;
+  }
+  #anmeldung h2{font-family:'Fraunces',serif;font-weight:600}
+  .anmelde-hinweis{color:#6B6353;margin-bottom:8px}
+  .anmelde-felder{display:flex;flex-direction:column;gap:12px}
+  .anmelde-fehler{color:#A33B2E;font-weight:600}
   h1{font-family:'Fraunces',serif;font-weight:700;font-size:clamp(1.4rem,4vw,2rem);letter-spacing:.2px}
   .untertitel{opacity:.75;font-size:.95rem}
   main{max-width:980px;margin:0 auto;padding:16px}
@@ -168,10 +181,29 @@
   <div class="kopf-innen">
     <h1>Familienkalender</h1>
     <span class="untertitel">Wer hat wann Zeit?</span>
+    <button class="abmelden" id="abmeldenKnopf" hidden>Abmelden</button>
   </div>
 </header>
 
 <main>
+  <section id="anmeldung" hidden>
+    <h2>Anmelden</h2>
+    <p class="anmelde-hinweis">Melde dich mit deinem Familien-Konto an.</p>
+    <div class="anmelde-felder">
+      <div>
+        <label for="lEmail">E-Mail</label>
+        <input id="lEmail" type="email" autocomplete="username" required>
+      </div>
+      <div>
+        <label for="lPasswort">Passwort</label>
+        <input id="lPasswort" type="password" autocomplete="current-password" required>
+      </div>
+      <p class="anmelde-fehler" id="anmeldeFehler" hidden></p>
+      <button class="speichern" id="anmeldenKnopf">Anmelden</button>
+    </div>
+  </section>
+
+  <div id="kalenderBereich" hidden>
   <div class="monat-zeile">
     <div class="monat-name" id="monatName"></div>
     <div class="nav-knoepfe">
@@ -188,6 +220,8 @@
       <div>Mo</div><div>Di</div><div>Mi</div><div>Do</div><div>Fr</div><div>Sa</div><div>So</div>
     </div>
     <div id="wochen"></div>
+  </div>
+
   </div>
 
   <p class="status" id="status">Verbinde mit dem Kalender …</p>
@@ -280,24 +314,75 @@ const faelltAuf = (e, dIso) => dIso >= e.datum && dIso <= (e.datumBis || e.datum
 const istMehrtaegig = e => e.datumBis && e.datumBis !== e.datum;
 const kurzDatum = isoStr => `${isoStr.slice(8,10)}.${isoStr.slice(5,7)}.`;
 
-/* ---------- Firebase verbinden ---------- */
+/* ---------- Firebase verbinden (mit Login) ---------- */
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const anmeldung = document.getElementById("anmeldung");
+const kalenderBereich = document.getElementById("kalenderBereich");
+const abmeldenKnopf = document.getElementById("abmeldenKnopf");
+const anmeldeFehler = document.getElementById("anmeldeFehler");
+let stopSnapshot = null;
+
+function zeigeKalender(sichtbar) {
+  kalenderBereich.hidden = !sichtbar;
+  anmeldung.hidden = sichtbar;
+  abmeldenKnopf.hidden = !sichtbar;
+}
+
 if (firebaseConfig.apiKey === "HIER_EINTRAGEN") {
+  zeigeKalender(true);
   status.textContent = "Firebase ist noch nicht eingerichtet – trage deine Konfiguration im Code ein (siehe ANLEITUNG.md). Der Kalender läuft solange ohne Speicherung.";
   status.classList.add("fehler");
 } else {
   try {
     const app = initializeApp(firebaseConfig);
     db = getFirestore(app);
-    onSnapshot(collection(db, "termine"), (schnappschuss) => {
-      termine = schnappschuss.docs.map(d => ({ id: d.id, ...d.data() }));
-      status.textContent = "Verbunden – Änderungen sind sofort für alle sichtbar.";
-      status.classList.remove("fehler");
-      zeichneMonat();
-      if (offenesDatum) fuelleTagesListe(offenesDatum);
-    }, (fehler) => {
-      status.textContent = "Verbindung fehlgeschlagen: " + fehler.message;
-      status.classList.add("fehler");
+    const auth = getAuth(app);
+
+    onAuthStateChanged(auth, (nutzer) => {
+      if (nutzer) {
+        zeigeKalender(true);
+        status.textContent = "Verbinde mit dem Kalender …";
+        stopSnapshot = onSnapshot(collection(db, "termine"), (schnappschuss) => {
+          termine = schnappschuss.docs.map(d => ({ id: d.id, ...d.data() }));
+          status.textContent = `Angemeldet als ${nutzer.email} – Änderungen sind sofort für alle sichtbar.`;
+          status.classList.remove("fehler");
+          zeichneMonat();
+          if (offenesDatum) fuelleTagesListe(offenesDatum);
+        }, (fehler) => {
+          status.textContent = "Verbindung fehlgeschlagen: " + fehler.message;
+          status.classList.add("fehler");
+        });
+      } else {
+        if (stopSnapshot) { stopSnapshot(); stopSnapshot = null; }
+        termine = [];
+        zeigeKalender(false);
+        status.textContent = "Bitte melde dich an, um den Kalender zu sehen.";
+        status.classList.remove("fehler");
+      }
     });
+
+    const anmelden = async () => {
+      anmeldeFehler.hidden = true;
+      try {
+        await signInWithEmailAndPassword(auth,
+          document.getElementById("lEmail").value.trim(),
+          document.getElementById("lPasswort").value);
+        document.getElementById("lPasswort").value = "";
+      } catch (f) {
+        anmeldeFehler.textContent =
+          (f.code === "auth/invalid-credential" || f.code === "auth/wrong-password" || f.code === "auth/user-not-found")
+            ? "E-Mail oder Passwort stimmt nicht."
+            : "Anmeldung fehlgeschlagen: " + f.message;
+        anmeldeFehler.hidden = false;
+      }
+    };
+    document.getElementById("anmeldenKnopf").addEventListener("click", anmelden);
+    document.getElementById("lPasswort").addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") anmelden();
+    });
+    abmeldenKnopf.addEventListener("click", () => signOut(auth));
   } catch (f) {
     status.textContent = "Firebase-Fehler: " + f.message;
     status.classList.add("fehler");
