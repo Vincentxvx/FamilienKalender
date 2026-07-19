@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Familienkalender</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Sofia+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --see:#1F5673;        /* Balaton-Blau */
+    --see-tief:#143C52;
+    --sand:#F6F1E7;       /* Uferpapier */
+    --schilf:#6E7F4F;
+    --sonne:#E2A23B;
+    --tinte:#22292E;
+    --linie:#DDD3C0;
+    --weiss:#FFFFFF;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:'Sofia Sans',system-ui,sans-serif;
+    background:var(--sand);
+    color:var(--tinte);
+    min-height:100vh;
+  }
+  header{
+    background:var(--see);
+    color:var(--weiss);
+    padding:20px 16px 14px;
+  }
+  .kopf-innen{max-width:980px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px}
+  h1{font-family:'Fraunces',serif;font-weight:700;font-size:clamp(1.4rem,4vw,2rem);letter-spacing:.2px}
+  .untertitel{opacity:.75;font-size:.95rem}
+  main{max-width:980px;margin:0 auto;padding:16px}
+
+  /* Monatsnavigation */
+  .monat-zeile{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0 14px}
+  .monat-name{font-family:'Fraunces',serif;font-size:clamp(1.2rem,3.5vw,1.7rem);font-weight:600}
+  .nav-knoepfe{display:flex;gap:8px}
+  button{
+    font-family:inherit;font-size:1rem;cursor:pointer;border:none;border-radius:10px;
+  }
+  .nav-knopf{
+    background:var(--weiss);border:1.5px solid var(--linie);width:42px;height:42px;
+    font-size:1.2rem;color:var(--see);font-weight:700;
+  }
+  .nav-knopf:hover{border-color:var(--see)}
+  .heute-knopf{background:var(--weiss);border:1.5px solid var(--linie);padding:0 14px;height:42px;color:var(--see);font-weight:600}
+  .heute-knopf:hover{border-color:var(--see)}
+
+  /* Familienlegende */
+  .legende{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .chip{
+    display:flex;align-items:center;gap:7px;background:var(--weiss);
+    border:1.5px solid var(--linie);border-radius:999px;padding:7px 14px;font-weight:600;font-size:.95rem;
+    user-select:none;
+  }
+  .chip[aria-pressed="false"]{opacity:.38}
+  .chip:focus-visible,.nav-knopf:focus-visible,.heute-knopf:focus-visible{outline:3px solid var(--sonne);outline-offset:2px}
+  .punkt{width:12px;height:12px;border-radius:50%;flex:none}
+
+  /* Kalendergitter */
+  .gitter{
+    background:var(--weiss);border:1.5px solid var(--linie);border-radius:var(--radius);
+    overflow:hidden;
+  }
+  .wochentage,.woche{display:grid;grid-template-columns:repeat(7,1fr)}
+  .wochentage div{
+    padding:10px 6px;text-align:center;font-weight:700;font-size:.8rem;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--see);border-bottom:1.5px solid var(--linie);
+  }
+  .tag{
+    min-height:96px;border-top:1px solid var(--linie);border-left:1px solid var(--linie);
+    padding:6px;cursor:pointer;position:relative;background:var(--weiss);
+    display:flex;flex-direction:column;gap:3px;text-align:left;font-family:inherit;
+  }
+  .woche .tag:first-child{border-left:none}
+  .woche:first-child .tag{border-top:none}
+  .tag:hover{background:#FBF8F1}
+  .tag:focus-visible{outline:3px solid var(--sonne);outline-offset:-3px;z-index:1}
+  .tag.fremd{background:#F3EEE3;color:#9A9184}
+  .tag.heute .tagnr{background:var(--sonne);color:var(--weiss)}
+  .tagnr{
+    width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:.9rem;flex:none;
+  }
+  .eintrag{
+    font-size:.78rem;line-height:1.25;padding:2px 6px;border-radius:6px;color:var(--weiss);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;
+  }
+  .mehr{font-size:.75rem;color:var(--see);font-weight:700}
+
+  /* Dialog */
+  dialog{
+    border:none;border-radius:var(--radius);padding:0;max-width:440px;width:calc(100vw - 32px);
+    box-shadow:0 20px 60px rgba(20,60,82,.35);
+  }
+  dialog::backdrop{background:rgba(20,60,82,.45)}
+  .dialog-kopf{
+    background:var(--see);color:var(--weiss);padding:16px 20px;
+    font-family:'Fraunces',serif;font-size:1.15rem;font-weight:600;
+    display:flex;justify-content:space-between;align-items:center;gap:10px;
+  }
+  .schliessen{background:transparent;color:var(--weiss);font-size:1.5rem;line-height:1;padding:2px 6px}
+  .dialog-koerper{padding:18px 20px 20px;display:flex;flex-direction:column;gap:14px}
+  .tages-liste{display:flex;flex-direction:column;gap:8px}
+  .tages-eintrag{
+    display:flex;align-items:center;gap:10px;background:var(--sand);
+    border-radius:10px;padding:9px 12px;
+  }
+  .tages-eintrag .info{flex:1;min-width:0}
+  .tages-eintrag .titel{font-weight:700}
+  .tages-eintrag .meta{font-size:.85rem;color:#5A6167}
+  .loeschen{background:transparent;color:#A33B2E;font-size:1.15rem;padding:4px 8px}
+  .loeschen:hover{background:#F5E4E1;border-radius:8px}
+  .leer-hinweis{color:#8A8272;font-style:italic}
+  form{display:flex;flex-direction:column;gap:10px;border-top:1.5px solid var(--linie);padding-top:14px}
+  label{font-weight:700;font-size:.9rem}
+  input,select{
+    font-family:inherit;font-size:1rem;padding:10px 12px;border:1.5px solid var(--linie);
+    border-radius:10px;background:var(--weiss);width:100%;
+  }
+  input:focus,select:focus{outline:none;border-color:var(--see)}
+  .zeit-zeile{display:flex;gap:10px}
+  .zeit-zeile>div{flex:1}
+  .speichern{
+    background:var(--see);color:var(--weiss);font-weight:700;padding:12px;font-size:1.05rem;margin-top:4px;
+  }
+  .speichern:hover{background:var(--see-tief)}
+
+  /* Statusleiste */
+  .status{
+    text-align:center;font-size:.85rem;color:#7B7160;padding:14px 0 20px;
+  }
+  .status.fehler{color:#A33B2E;font-weight:600}
+
+  @media (max-width:640px){
+    .tag{min-height:64px;padding:4px}
+    .eintrag{display:none}
+    .tag .marker{display:flex;flex-wrap:wrap;gap:3px}
+    .marker .punkt{width:8px;height:8px}
+    .mehr{display:none}
+  }
+  @media (min-width:641px){.tag .marker{display:none}}
+  @media (prefers-reduced-motion:no-preference){
+    dialog[open]{animation:auf .18s ease-out}
+    @keyframes auf{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="kopf-innen">
+    <h1>Familienkalender</h1>
+    <span class="untertitel">Wer hat wann Zeit?</span>
+  </div>
+</header>
+
+<main>
+  <div class="monat-zeile">
+    <div class="monat-name" id="monatName"></div>
+    <div class="nav-knoepfe">
+      <button class="heute-knopf" id="heuteKnopf">Heute</button>
+      <button class="nav-knopf" id="zurueck" aria-label="Voriger Monat">‹</button>
+      <button class="nav-knopf" id="vor" aria-label="Nächster Monat">›</button>
+    </div>
+  </div>
+
+  <div class="legende" id="legende" aria-label="Familienmitglieder ein- und ausblenden"></div>
+
+  <div class="gitter">
+    <div class="wochentage">
+      <div>Mo</div><div>Di</div><div>Mi</div><div>Do</div><div>Fr</div><div>Sa</div><div>So</div>
+    </div>
+    <div id="wochen"></div>
+  </div>
+
+  <p class="status" id="status">Verbinde mit dem Kalender …</p>
+</main>
+
+<dialog id="tagDialog">
+  <div class="dialog-kopf">
+    <span id="dialogTitel"></span>
+    <button class="schliessen" id="dialogZu" aria-label="Schließen">×</button>
+  </div>
+  <div class="dialog-koerper">
+    <div class="tages-liste" id="tagesListe"></div>
+    <form id="neuForm">
+      <div>
+        <label for="fTitel">Neuer Termin</label>
+        <input id="fTitel" type="text" placeholder="z. B. Fußballtraining" required maxlength="80">
+      </div>
+      <div>
+        <label for="fWer">Wer?</label>
+        <select id="fWer" required></select>
+      </div>
+      <div class="zeit-zeile">
+        <div>
+          <label for="fVon">Von</label>
+          <input id="fVon" type="time">
+        </div>
+        <div>
+          <label for="fBis">Bis</label>
+          <input id="fBis" type="time">
+        </div>
+      </div>
+      <button class="speichern" type="submit">Termin speichern</button>
+    </form>
+  </div>
+</dialog>
+
+<script type="module">
+/* ============================================================
+   1) FAMILIE ANPASSEN
+   Hier eure Namen und Farben eintragen – so viele ihr wollt.
+   ============================================================ */
+const FAMILIE = [
+  { id: "papa",    name: "Papa",    farbe: "#1F5673" },
+  { id: "mama",    name: "Mama",    farbe: "#A33B2E" },
+  { id: "vincent", name: "Vincent", farbe: "#6E7F4F" },
+  { id: "evelyn",  name: "Evelyn",  farbe: "#E2A23B" },
+];
+
+/* ============================================================
+   2) FIREBASE-KONFIGURATION EINTRAGEN
+   Diese Werte bekommst du aus der Firebase-Konsole –
+   siehe ANLEITUNG.md, Schritt 4.
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyBnf83MOYlsFl1WY85YgNPMsdE58-4xXdU",
+  authDomain: "famielienkalender-387ad.firebaseapp.com",
+  projectId: "famielienkalender-387ad",
+  storageBucket: "famielienkalender-387ad.firebasestorage.app",
+  messagingSenderId: "907089501494",
+  appId: "1:907089501494:web:7025fbab63670ee9886797"
+};
+
+/* ============================================================
+   Ab hier musst du nichts mehr ändern.
+   ============================================================ */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const status = document.getElementById("status");
+let db = null;
+let termine = [];            // { id, datum:"2026-07-19", titel, wer, von, bis }
+const aktiveMitglieder = new Set(FAMILIE.map(m => m.id));
+let anzeigeJahr, anzeigeMonat;     // aktuell angezeigter Monat
+let offenesDatum = null;           // Datum im Dialog
+
+const heute = new Date();
+anzeigeJahr = heute.getFullYear();
+anzeigeMonat = heute.getMonth();
+
+const MONATE = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+const iso = (j,m,t) => `${j}-${String(m+1).padStart(2,"0")}-${String(t).padStart(2,"0")}`;
+const mitglied = id => FAMILIE.find(m => m.id === id);
+
+/* ---------- Firebase verbinden ---------- */
+if (firebaseConfig.apiKey === "HIER_EINTRAGEN") {
+  status.textContent = "Firebase ist noch nicht eingerichtet – trage deine Konfiguration im Code ein (siehe ANLEITUNG.md). Der Kalender läuft solange ohne Speicherung.";
+  status.classList.add("fehler");
+} else {
+  try {
+    const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    onSnapshot(collection(db, "termine"), (schnappschuss) => {
+      termine = schnappschuss.docs.map(d => ({ id: d.id, ...d.data() }));
+      status.textContent = "Verbunden – Änderungen sind sofort für alle sichtbar.";
+      status.classList.remove("fehler");
+      zeichneMonat();
+      if (offenesDatum) fuelleTagesListe(offenesDatum);
+    }, (fehler) => {
+      status.textContent = "Verbindung fehlgeschlagen: " + fehler.message;
+      status.classList.add("fehler");
+    });
+  } catch (f) {
+    status.textContent = "Firebase-Fehler: " + f.message;
+    status.classList.add("fehler");
+  }
+}
+
+/* ---------- Legende ---------- */
+const legende = document.getElementById("legende");
+for (const m of FAMILIE) {
+  const b = document.createElement("button");
+  b.className = "chip";
+  b.setAttribute("aria-pressed", "true");
+  b.innerHTML = `<span class="punkt" style="background:${m.farbe}"></span>${m.name}`;
+  b.addEventListener("click", () => {
+    if (aktiveMitglieder.has(m.id)) aktiveMitglieder.delete(m.id);
+    else aktiveMitglieder.add(m.id);
+    b.setAttribute("aria-pressed", aktiveMitglieder.has(m.id) ? "true" : "false");
+    zeichneMonat();
+  });
+  legende.appendChild(b);
+}
+
+/* ---------- Auswahlliste im Formular ---------- */
+const fWer = document.getElementById("fWer");
+for (const m of FAMILIE) {
+  const o = document.createElement("option");
+  o.value = m.id; o.textContent = m.name;
+  fWer.appendChild(o);
+}
+
+/* ---------- Monat zeichnen ---------- */
+const wochenEl = document.getElementById("wochen");
+function zeichneMonat() {
+  document.getElementById("monatName").textContent = `${MONATE[anzeigeMonat]} ${anzeigeJahr}`;
+  wochenEl.innerHTML = "";
+
+  const erster = new Date(anzeigeJahr, anzeigeMonat, 1);
+  let start = new Date(erster);
+  start.setDate(1 - ((erster.getDay() + 6) % 7)); // Montag der ersten Woche
+
+  const heuteIso = iso(heute.getFullYear(), heute.getMonth(), heute.getDate());
+
+  for (let w = 0; w < 6; w++) {
+    const woche = document.createElement("div");
+    woche.className = "woche";
+    for (let t = 0; t < 7; t++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + w * 7 + t);
+      const dIso = iso(d.getFullYear(), d.getMonth(), d.getDate());
+      const zelle = document.createElement("button");
+      zelle.className = "tag";
+      zelle.setAttribute("aria-label", d.toLocaleDateString("de-DE", { weekday:"long", day:"numeric", month:"long" }));
+      if (d.getMonth() !== anzeigeMonat) zelle.classList.add("fremd");
+      if (dIso === heuteIso) zelle.classList.add("heute");
+
+      const nr = document.createElement("span");
+      nr.className = "tagnr";
+      nr.textContent = d.getDate();
+      zelle.appendChild(nr);
+
+      const desTages = termine
+        .filter(e => e.datum === dIso && aktiveMitglieder.has(e.wer))
+        .sort((a,b) => (a.von || "99") < (b.von || "99") ? -1 : 1);
+
+      const marker = document.createElement("span");
+      marker.className = "marker";
+      for (const e of desTages.slice(0, 8)) {
+        const p = document.createElement("span");
+        p.className = "punkt";
+        p.style.background = mitglied(e.wer)?.farbe || "#888";
+        marker.appendChild(p);
+      }
+      zelle.appendChild(marker);
+
+      for (const e of desTages.slice(0, 3)) {
+        const bal = document.createElement("span");
+        bal.className = "eintrag";
+        bal.style.background = mitglied(e.wer)?.farbe || "#888";
+        bal.textContent = (e.von ? e.von + " " : "") + e.titel;
+        zelle.appendChild(bal);
+      }
+      if (desTages.length > 3) {
+        const mehr = document.createElement("span");
+        mehr.className = "mehr";
+        mehr.textContent = `+${desTages.length - 3} weitere`;
+        zelle.appendChild(mehr);
+      }
+
+      zelle.addEventListener("click", () => oeffneTag(dIso, d));
+      woche.appendChild(zelle);
+    }
+    wochenEl.appendChild(woche);
+  }
+}
+
+/* ---------- Navigation ---------- */
+document.getElementById("zurueck").addEventListener("click", () => {
+  anzeigeMonat--; if (anzeigeMonat < 0) { anzeigeMonat = 11; anzeigeJahr--; }
+  zeichneMonat();
+});
+document.getElementById("vor").addEventListener("click", () => {
+  anzeigeMonat++; if (anzeigeMonat > 11) { anzeigeMonat = 0; anzeigeJahr++; }
+  zeichneMonat();
+});
+document.getElementById("heuteKnopf").addEventListener("click", () => {
+  anzeigeJahr = heute.getFullYear(); anzeigeMonat = heute.getMonth();
+  zeichneMonat();
+});
+
+/* ---------- Tagesdialog ---------- */
+const dialog = document.getElementById("tagDialog");
+function oeffneTag(dIso, d) {
+  offenesDatum = dIso;
+  document.getElementById("dialogTitel").textContent =
+    d.toLocaleDateString("de-DE", { weekday:"long", day:"numeric", month:"long", year:"numeric" });
+  fuelleTagesListe(dIso);
+  document.getElementById("neuForm").reset();
+  dialog.showModal();
+}
+document.getElementById("dialogZu").addEventListener("click", () => dialog.close());
+dialog.addEventListener("close", () => { offenesDatum = null; });
+
+function fuelleTagesListe(dIso) {
+  const liste = document.getElementById("tagesListe");
+  liste.innerHTML = "";
+  const desTages = termine
+    .filter(e => e.datum === dIso)
+    .sort((a,b) => (a.von || "99") < (b.von || "99") ? -1 : 1);
+  if (desTages.length === 0) {
+    liste.innerHTML = `<p class="leer-hinweis">Noch keine Termine – trag unten den ersten ein.</p>`;
+    return;
+  }
+  for (const e of desTages) {
+    const zeile = document.createElement("div");
+    zeile.className = "tages-eintrag";
+    const zeit = e.von ? (e.von + (e.bis ? "–" + e.bis : "") + " Uhr") : "ganztägig";
+    zeile.innerHTML = `
+      <span class="punkt" style="background:${mitglied(e.wer)?.farbe || "#888"}"></span>
+      <span class="info">
+        <span class="titel">${escapeHtml(e.titel)}</span><br>
+        <span class="meta">${mitglied(e.wer)?.name || e.wer} · ${zeit}</span>
+      </span>`;
+    const loeschKnopf = document.createElement("button");
+    loeschKnopf.className = "loeschen";
+    loeschKnopf.setAttribute("aria-label", "Termin löschen");
+    loeschKnopf.textContent = "🗑";
+    loeschKnopf.addEventListener("click", async () => {
+      if (!db) return;
+      if (confirm(`„${e.titel}" wirklich löschen?`)) {
+        await deleteDoc(doc(db, "termine", e.id));
+      }
+    });
+    zeile.appendChild(loeschKnopf);
+    liste.appendChild(zeile);
+  }
+}
+
+/* ---------- Neuer Termin ---------- */
+document.getElementById("neuForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  if (!offenesDatum) return;
+  const titel = document.getElementById("fTitel").value.trim();
+  if (!titel) return;
+  const neu = {
+    datum: offenesDatum,
+    titel,
+    wer: fWer.value,
+    von: document.getElementById("fVon").value || "",
+    bis: document.getElementById("fBis").value || "",
+  };
+  if (!db) {
+    // Ohne Firebase: nur lokal in dieser Sitzung anzeigen
+    termine.push({ id: "lokal-" + Date.now(), ...neu });
+    zeichneMonat(); fuelleTagesListe(offenesDatum);
+    document.getElementById("neuForm").reset();
+    return;
+  }
+  try {
+    await addDoc(collection(db, "termine"), neu);
+    document.getElementById("neuForm").reset();
+  } catch (f) {
+    alert("Speichern fehlgeschlagen: " + f.message);
+  }
+});
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+
+zeichneMonat();
+</script>
+</body>
+</html>
