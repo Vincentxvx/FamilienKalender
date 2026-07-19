@@ -283,12 +283,14 @@
 /* ============================================================
    1) FAMILIE ANPASSEN
    Hier eure Namen und Farben eintragen – so viele ihr wollt.
+   Bei "email" die Anmelde-Adresse aus Firebase Authentication
+   eintragen, damit der Verlauf Namen statt E-Mails zeigt.
    ============================================================ */
 const FAMILIE = [
-  { id: "papa",    name: "Papa",    farbe: "#1F5673" },
-  { id: "mama",    name: "Mama",    farbe: "#A33B2E" },
-  { id: "vincent", name: "Vincent", farbe: "#6E7F4F" },
-  { id: "evelyn",  name: "Evelyn",  farbe: "#E2A23B" },
+  { id: "papa",    name: "Papa",    farbe: "#1F5673", email: "test@test.com" },
+  { id: "mama",    name: "Mama",    farbe: "#A33B2E", email: "" },
+  { id: "vincent", name: "Vincent", farbe: "#6E7F4F", email: "v.r.rasch@icloud.com" },
+  { id: "evelyn",  name: "Evelyn",  farbe: "#E2A23B", email: "" },
 ];
 
 /* ============================================================
@@ -326,6 +328,9 @@ anzeigeMonat = heute.getMonth();
 const MONATE = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 const iso = (j,m,t) => `${j}-${String(m+1).padStart(2,"0")}-${String(t).padStart(2,"0")}`;
 const mitglied = id => FAMILIE.find(m => m.id === id);
+const mitgliedZuEmail = mail =>
+  FAMILIE.find(m => (m.email || "").toLowerCase() === (mail || "").toLowerCase());
+const anzeigeName = mail => mitgliedZuEmail(mail)?.name || mail || "unbekannt";
 // Fällt Termin e auf den Tag dIso? (mehrtägige Termine laufen von datum bis datumBis)
 const faelltAuf = (e, dIso) => dIso >= e.datum && dIso <= (e.datumBis || e.datum);
 const istMehrtaegig = e => e.datumBis && e.datumBis !== e.datum;
@@ -361,11 +366,13 @@ if (firebaseConfig.apiKey === "HIER_EINTRAGEN") {
     onAuthStateChanged(auth, (nutzer) => {
       if (nutzer) {
         angemeldetAls = nutzer.email || "";
+        const ich = mitgliedZuEmail(angemeldetAls);
+        if (ich) fWer.value = ich.id;
         zeigeKalender(true);
         status.textContent = "Verbinde mit dem Kalender …";
         stopSnapshot = onSnapshot(collection(db, "termine"), (schnappschuss) => {
           termine = schnappschuss.docs.map(d => ({ id: d.id, ...d.data() }));
-          status.textContent = `Angemeldet als ${nutzer.email} – Änderungen sind sofort für alle sichtbar.`;
+          status.textContent = `Angemeldet als ${anzeigeName(angemeldetAls)} – Änderungen sind sofort für alle sichtbar.`;
           status.classList.remove("fehler");
           zeichneMonat();
           if (offenesDatum) fuelleTagesListe(offenesDatum);
@@ -636,7 +643,7 @@ function fuelleTagesListe(dIso) {
         const details = v.aktion === "geändert"
           ? (v.aenderungen && v.aenderungen.length ? ": " + v.aenderungen.join("; ") : "")
           : "";
-        z.innerHTML = `<span class="wann">${escapeHtml(formatWann(v.wann))}</span> – ${escapeHtml(v.wer || "unbekannt")} hat den Termin ${v.aktion === "geändert" ? "geändert" : "erstellt"}${escapeHtml(details)}`;
+        z.innerHTML = `<span class="wann">${escapeHtml(formatWann(v.wann))}</span> – ${escapeHtml(anzeigeName(v.wer))} hat den Termin ${v.aktion === "geändert" ? "geändert" : "erstellt"}${escapeHtml(details)}`;
         verlaufBox.appendChild(z);
       }
     }
@@ -677,6 +684,8 @@ function beendeBearbeitung() {
   document.getElementById("speichernKnopf").textContent = "Termin speichern";
   document.getElementById("abbrechenKnopf").hidden = true;
   document.getElementById("neuForm").reset();
+  const ich = mitgliedZuEmail(angemeldetAls);
+  if (ich) fWer.value = ich.id;
   if (offenesDatum) {
     document.getElementById("fStartDatum").value = offenesDatum;
     document.getElementById("fBisDatum").min = offenesDatum;
