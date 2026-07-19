@@ -93,6 +93,18 @@
   }
   .mehr{font-size:.75rem;color:var(--see);font-weight:700}
 
+  /* Durchgehende Balken für mehrtägige Termine */
+  .woche{position:relative}
+  .balken{
+    position:absolute;height:17px;border-radius:9px;color:var(--weiss);
+    font-size:.72rem;font-weight:700;line-height:17px;padding:0 8px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    pointer-events:none;z-index:1;
+  }
+  .balken.offen-links{border-top-left-radius:0;border-bottom-left-radius:0}
+  .balken.offen-rechts{border-top-right-radius:0;border-bottom-right-radius:0}
+  .balken-platz{flex:none}
+
   /* Dialog */
   dialog{
     border:none;border-radius:var(--radius);padding:0;max-width:440px;width:calc(100vw - 32px);
@@ -331,10 +343,12 @@ function zeichneMonat() {
   for (let w = 0; w < 6; w++) {
     const woche = document.createElement("div");
     woche.className = "woche";
+    const wochenTage = [];
     for (let t = 0; t < 7; t++) {
       const d = new Date(start);
       d.setDate(start.getDate() + w * 7 + t);
       const dIso = iso(d.getFullYear(), d.getMonth(), d.getDate());
+      wochenTage.push(dIso);
       const zelle = document.createElement("button");
       zelle.className = "tag";
       zelle.setAttribute("aria-label", d.toLocaleDateString("de-DE", { weekday:"long", day:"numeric", month:"long" }));
@@ -346,12 +360,15 @@ function zeichneMonat() {
       nr.textContent = d.getDate();
       zelle.appendChild(nr);
 
+      // Platzhalter für die Balken – Höhe wird gesetzt, sobald die Spuren feststehen
+      const platz = document.createElement("span");
+      platz.className = "balken-platz";
+      zelle.appendChild(platz);
+
+      // In den Zellen nur eintägige Termine – mehrtägige kommen als Balken
       const desTages = termine
-        .filter(e => faelltAuf(e, dIso) && aktiveMitglieder.has(e.wer))
-        .sort((a,b) => {
-          if (istMehrtaegig(a) !== istMehrtaegig(b)) return istMehrtaegig(a) ? -1 : 1;
-          return (a.von || "99") < (b.von || "99") ? -1 : 1;
-        });
+        .filter(e => !istMehrtaegig(e) && faelltAuf(e, dIso) && aktiveMitglieder.has(e.wer))
+        .sort((a,b) => (a.von || "99") < (b.von || "99") ? -1 : 1);
 
       const marker = document.createElement("span");
       marker.className = "marker";
@@ -380,6 +397,43 @@ function zeichneMonat() {
       zelle.addEventListener("click", () => oeffneTag(dIso, d));
       woche.appendChild(zelle);
     }
+
+    /* ----- Mehrtägige Termine als durchgehende Balken über die Woche legen ----- */
+    const wochenStart = wochenTage[0], wochenEnde = wochenTage[6];
+    const inDieserWoche = termine
+      .filter(e => istMehrtaegig(e) && aktiveMitglieder.has(e.wer)
+                && e.datum <= wochenEnde && e.datumBis >= wochenStart)
+      .sort((a,b) => a.datum < b.datum ? -1 : (a.datum > b.datum ? 1 : (a.datumBis > b.datumBis ? -1 : 1)));
+
+    const spuren = []; // pro Spur: belegte Spalten [von, bis]
+    const BALKEN_H = 19, OBEN = window.matchMedia("(max-width:640px)").matches ? 34 : 37;
+
+    for (const e of inDieserWoche) {
+      const vonSp = Math.max(0, wochenTage.indexOf(e.datum) !== -1 ? wochenTage.indexOf(e.datum) : 0);
+      const bisSp = wochenTage.indexOf(e.datumBis) !== -1 ? wochenTage.indexOf(e.datumBis) : 6;
+      let spur = spuren.findIndex(belegt => belegt.every(([a,b]) => bisSp < a || vonSp > b));
+      if (spur === -1) { spuren.push([]); spur = spuren.length - 1; }
+      spuren[spur].push([vonSp, bisSp]);
+
+      const balken = document.createElement("span");
+      balken.className = "balken";
+      if (e.datum < wochenStart) balken.classList.add("offen-links");
+      if (e.datumBis > wochenEnde) balken.classList.add("offen-rechts");
+      balken.style.background = mitglied(e.wer)?.farbe || "#888";
+      balken.style.left = `calc(${vonSp} / 7 * 100% + ${e.datum < wochenStart ? 0 : 4}px)`;
+      balken.style.width = `calc(${bisSp - vonSp + 1} / 7 * 100% - ${(e.datum < wochenStart ? 0 : 4) + (e.datumBis > wochenEnde ? 0 : 4)}px)`;
+      balken.style.top = `${OBEN + spur * BALKEN_H}px`;
+      balken.textContent = e.titel;
+      woche.appendChild(balken);
+    }
+
+    // Zellen so viel Platz freihalten, wie Balkenspuren da sind
+    if (spuren.length > 0) {
+      for (const platz of woche.querySelectorAll(".balken-platz")) {
+        platz.style.height = `${spuren.length * BALKEN_H}px`;
+      }
+    }
+
     wochenEl.appendChild(woche);
   }
 }
