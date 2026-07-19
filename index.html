@@ -287,7 +287,7 @@
    eintragen, damit der Verlauf Namen statt E-Mails zeigt.
    ============================================================ */
 const FAMILIE = [
-  { id: "papa",    name: "Papa",    farbe: "#1F5673", email: "o_rasch@web.de" },
+  { id: "papa",    name: "Papa",    farbe: "#1F5673", email: "" },
   { id: "mama",    name: "Mama",    farbe: "#A33B2E", email: "" },
   { id: "vincent", name: "Vincent", farbe: "#6E7F4F", email: "v.r.rasch@icloud.com" },
   { id: "evelyn",  name: "Evelyn",  farbe: "#E2A23B", email: "" },
@@ -750,12 +750,13 @@ document.getElementById("neuForm").addEventListener("submit", async (ev) => {
 
     if (!db) {
       Object.assign(alt, felder, { verlauf });
-      zeichneMonat(); fuelleTagesListe(offenesDatum); beendeBearbeitung();
+      zeichneMonat(); beendeBearbeitung(); dialog.close();
       return;
     }
     try {
       await updateDoc(doc(db, "termine", bearbeiteId), { ...felder, verlauf });
       beendeBearbeitung();
+      dialog.close();
     } catch (f) {
       alert("Speichern fehlgeschlagen: " + f.message);
     }
@@ -773,13 +774,15 @@ document.getElementById("neuForm").addEventListener("submit", async (ev) => {
   if (!db) {
     // Ohne Firebase: nur lokal in dieser Sitzung anzeigen
     termine.push({ id: "lokal-" + Date.now(), ...neu });
-    zeichneMonat(); fuelleTagesListe(offenesDatum);
+    zeichneMonat();
     document.getElementById("neuForm").reset();
+    dialog.close();
     return;
   }
   try {
     await addDoc(collection(db, "termine"), neu);
     document.getElementById("neuForm").reset();
+    dialog.close();
   } catch (f) {
     alert("Speichern fehlgeschlagen: " + f.message);
   }
