@@ -253,9 +253,15 @@
         <label for="fWer">Wer?</label>
         <select id="fWer" required></select>
       </div>
-      <div>
-        <label for="fBisDatum">Bis (nur bei mehrtägigen Terminen, z. B. Urlaub)</label>
-        <input id="fBisDatum" type="date">
+      <div class="zeit-zeile">
+        <div>
+          <label for="fStartDatum">Am</label>
+          <input id="fStartDatum" type="date" required>
+        </div>
+        <div>
+          <label for="fBisDatum">Bis (bei mehrtägigen)</label>
+          <input id="fBisDatum" type="date">
+        </div>
       </div>
       <div class="zeit-zeile">
         <div>
@@ -558,7 +564,6 @@ function oeffneTag(dIso, d) {
     d.toLocaleDateString("de-DE", { weekday:"long", day:"numeric", month:"long", year:"numeric" });
   fuelleTagesListe(dIso);
   beendeBearbeitung();
-  document.getElementById("fBisDatum").min = dIso;
   dialog.showModal();
 }
 document.getElementById("dialogZu").addEventListener("click", () => dialog.close());
@@ -657,6 +662,7 @@ function starteBearbeitung(e) {
   document.getElementById("abbrechenKnopf").hidden = false;
   document.getElementById("fTitel").value = e.titel;
   fWer.value = e.wer;
+  document.getElementById("fStartDatum").value = e.datum;
   const fBisD = document.getElementById("fBisDatum");
   fBisD.min = e.datum;
   fBisD.value = e.datumBis || "";
@@ -671,9 +677,20 @@ function beendeBearbeitung() {
   document.getElementById("speichernKnopf").textContent = "Termin speichern";
   document.getElementById("abbrechenKnopf").hidden = true;
   document.getElementById("neuForm").reset();
-  if (offenesDatum) document.getElementById("fBisDatum").min = offenesDatum;
+  if (offenesDatum) {
+    document.getElementById("fStartDatum").value = offenesDatum;
+    document.getElementById("fBisDatum").min = offenesDatum;
+  }
 }
 document.getElementById("abbrechenKnopf").addEventListener("click", beendeBearbeitung);
+
+// Bis-Datum darf nie vor dem Startdatum liegen
+document.getElementById("fStartDatum").addEventListener("change", () => {
+  const s = document.getElementById("fStartDatum").value;
+  const fBisD = document.getElementById("fBisDatum");
+  fBisD.min = s;
+  if (fBisD.value && fBisD.value < s) fBisD.value = "";
+});
 
 /* ---------- Neuer Termin / Änderungen speichern ---------- */
 document.getElementById("neuForm").addEventListener("submit", async (ev) => {
@@ -683,7 +700,7 @@ document.getElementById("neuForm").addEventListener("submit", async (ev) => {
   if (!titel) return;
 
   const alt = bearbeiteId ? termine.find(t => t.id === bearbeiteId) : null;
-  const startTag = alt ? alt.datum : offenesDatum;
+  const startTag = document.getElementById("fStartDatum").value || (alt ? alt.datum : offenesDatum);
   let datumBis = document.getElementById("fBisDatum").value || "";
   if (datumBis && datumBis < startTag) {
     alert("Das Enddatum liegt vor dem Starttag – bitte korrigieren.");
@@ -692,6 +709,7 @@ document.getElementById("neuForm").addEventListener("submit", async (ev) => {
   if (datumBis === startTag) datumBis = "";
 
   const felder = {
+    datum: startTag,
     titel,
     wer: fWer.value,
     datumBis,
@@ -705,6 +723,7 @@ document.getElementById("neuForm").addEventListener("submit", async (ev) => {
     const zeitText = f => f.von ? (f.von + (f.bis ? "–" + f.bis : "")) : "ganztägig";
     if (alt.titel !== felder.titel) aenderungen.push(`Titel: „${alt.titel}" → „${felder.titel}"`);
     if (alt.wer !== felder.wer) aenderungen.push(`Wer: ${mitglied(alt.wer)?.name || alt.wer} → ${mitglied(felder.wer)?.name || felder.wer}`);
+    if (alt.datum !== felder.datum) aenderungen.push(`Startdatum: ${kurzDatum(alt.datum)} → ${kurzDatum(felder.datum)}`);
     if ((alt.datumBis || "") !== felder.datumBis) {
       aenderungen.push(`Bis-Datum: ${alt.datumBis ? kurzDatum(alt.datumBis) : "–"} → ${felder.datumBis ? kurzDatum(felder.datumBis) : "–"}`);
     }
@@ -735,7 +754,6 @@ document.getElementById("neuForm").addEventListener("submit", async (ev) => {
   }
 
   const neu = {
-    datum: offenesDatum,
     ...felder,
     verlauf: [{
       wann: new Date().toISOString(),
