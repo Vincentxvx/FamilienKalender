@@ -142,6 +142,15 @@
   .tages-eintrag .meta{font-size:.85rem;color:#5A6167}
   .loeschen{background:transparent;color:#A33B2E;font-size:1.15rem;padding:4px 8px}
   .loeschen:hover{background:#F5E4E1;border-radius:8px}
+  .bearbeiten,.verlauf-knopf{background:transparent;color:var(--see);font-size:1.05rem;padding:4px 8px}
+  .bearbeiten:hover,.verlauf-knopf:hover{background:#E8EEF2;border-radius:8px}
+  .verlauf{
+    font-size:.82rem;color:#4A5157;background:var(--weiss);border:1.5px solid var(--linie);
+    border-radius:10px;padding:8px 12px;margin-top:-4px;
+  }
+  .verlauf div{padding:2px 0}
+  .verlauf .wann{font-weight:700;color:var(--see)}
+  .abbrechen{background:transparent;color:#5A6167;font-weight:600;padding:8px;text-decoration:underline}
   .leer-hinweis{color:#8A8272;font-style:italic}
   form{display:flex;flex-direction:column;gap:10px;border-top:1.5px solid var(--linie);padding-top:14px}
   label{font-weight:700;font-size:.9rem}
@@ -237,7 +246,7 @@
     <div class="tages-liste" id="tagesListe"></div>
     <form id="neuForm">
       <div>
-        <label for="fTitel">Neuer Termin</label>
+        <label for="fTitel" id="formLabel">Neuer Termin</label>
         <input id="fTitel" type="text" placeholder="z. B. Fußballtraining" required maxlength="80">
       </div>
       <div>
@@ -258,7 +267,8 @@
           <input id="fBis" type="time">
         </div>
       </div>
-      <button class="speichern" type="submit">Termin speichern</button>
+      <button class="speichern" type="submit" id="speichernKnopf">Termin speichern</button>
+      <button class="abbrechen" type="button" id="abbrechenKnopf" hidden>Bearbeiten abbrechen</button>
     </form>
   </div>
 </dialog>
@@ -293,7 +303,7 @@ const firebaseConfig = {
    Ab hier musst du nichts mehr ändern.
    ============================================================ */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot }
+import { getFirestore, collection, addDoc, deleteDoc, updateDoc, doc, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const status = document.getElementById("status");
@@ -324,6 +334,7 @@ const kalenderBereich = document.getElementById("kalenderBereich");
 const abmeldenKnopf = document.getElementById("abmeldenKnopf");
 const anmeldeFehler = document.getElementById("anmeldeFehler");
 let stopSnapshot = null;
+let angemeldetAls = "";       // E-Mail des angemeldeten Nutzers (für den Verlauf)
 
 function zeigeKalender(sichtbar) {
   kalenderBereich.hidden = !sichtbar;
@@ -343,6 +354,7 @@ if (firebaseConfig.apiKey === "HIER_EINTRAGEN") {
 
     onAuthStateChanged(auth, (nutzer) => {
       if (nutzer) {
+        angemeldetAls = nutzer.email || "";
         zeigeKalender(true);
         status.textContent = "Verbinde mit dem Kalender …";
         stopSnapshot = onSnapshot(collection(db, "termine"), (schnappschuss) => {
@@ -545,7 +557,7 @@ function oeffneTag(dIso, d) {
   document.getElementById("dialogTitel").textContent =
     d.toLocaleDateString("de-DE", { weekday:"long", day:"numeric", month:"long", year:"numeric" });
   fuelleTagesListe(dIso);
-  document.getElementById("neuForm").reset();
+  beendeBearbeitung();
   document.getElementById("fBisDatum").min = dIso;
   dialog.showModal();
 }
@@ -580,6 +592,20 @@ function fuelleTagesListe(dIso) {
         <span class="titel">${escapeHtml(e.titel)}</span><br>
         <span class="meta">${mitglied(e.wer)?.name || e.wer} · ${zeit}</span>
       </span>`;
+
+    const bearbKnopf = document.createElement("button");
+    bearbKnopf.className = "bearbeiten";
+    bearbKnopf.setAttribute("aria-label", "Termin bearbeiten");
+    bearbKnopf.textContent = "✎";
+    bearbKnopf.addEventListener("click", () => starteBearbeitung(e));
+    zeile.appendChild(bearbKnopf);
+
+    const verlaufKnopf = document.createElement("button");
+    verlaufKnopf.className = "verlauf-knopf";
+    verlaufKnopf.setAttribute("aria-label", "Änderungsverlauf anzeigen");
+    verlaufKnopf.textContent = "🕒";
+    zeile.appendChild(verlaufKnopf);
+
     const loeschKnopf = document.createElement("button");
     loeschKnopf.className = "loeschen";
     loeschKnopf.setAttribute("aria-label", "Termin löschen");
@@ -592,28 +618,130 @@ function fuelleTagesListe(dIso) {
     });
     zeile.appendChild(loeschKnopf);
     liste.appendChild(zeile);
+
+    const verlaufBox = document.createElement("div");
+    verlaufBox.className = "verlauf";
+    verlaufBox.hidden = true;
+    const eintraege = [...(e.verlauf || [])].reverse();
+    if (eintraege.length === 0) {
+      verlaufBox.textContent = "Kein Verlauf vorhanden (Termin stammt aus der Zeit vor dieser Funktion).";
+    } else {
+      for (const v of eintraege) {
+        const z = document.createElement("div");
+        const details = v.aktion === "geändert"
+          ? (v.aenderungen && v.aenderungen.length ? ": " + v.aenderungen.join("; ") : "")
+          : "";
+        z.innerHTML = `<span class="wann">${escapeHtml(formatWann(v.wann))}</span> – ${escapeHtml(v.wer || "unbekannt")} hat den Termin ${v.aktion === "geändert" ? "geändert" : "erstellt"}${escapeHtml(details)}`;
+        verlaufBox.appendChild(z);
+      }
+    }
+    liste.appendChild(verlaufBox);
+    verlaufKnopf.addEventListener("click", () => { verlaufBox.hidden = !verlaufBox.hidden; });
   }
 }
 
-/* ---------- Neuer Termin ---------- */
+/* ---------- Bearbeiten & Verlauf ---------- */
+let bearbeiteId = null;
+
+function formatWann(isoTs) {
+  if (!isoTs) return "unbekannt";
+  const d = new Date(isoTs);
+  return d.toLocaleDateString("de-DE", { day:"2-digit", month:"2-digit", year:"numeric" })
+       + ", " + d.toLocaleTimeString("de-DE", { hour:"2-digit", minute:"2-digit" }) + " Uhr";
+}
+
+function starteBearbeitung(e) {
+  bearbeiteId = e.id;
+  document.getElementById("formLabel").textContent = "Termin bearbeiten";
+  document.getElementById("speichernKnopf").textContent = "Änderungen speichern";
+  document.getElementById("abbrechenKnopf").hidden = false;
+  document.getElementById("fTitel").value = e.titel;
+  fWer.value = e.wer;
+  const fBisD = document.getElementById("fBisDatum");
+  fBisD.min = e.datum;
+  fBisD.value = e.datumBis || "";
+  document.getElementById("fVon").value = e.von || "";
+  document.getElementById("fBis").value = e.bis || "";
+  document.getElementById("fTitel").focus();
+}
+
+function beendeBearbeitung() {
+  bearbeiteId = null;
+  document.getElementById("formLabel").textContent = "Neuer Termin";
+  document.getElementById("speichernKnopf").textContent = "Termin speichern";
+  document.getElementById("abbrechenKnopf").hidden = true;
+  document.getElementById("neuForm").reset();
+  if (offenesDatum) document.getElementById("fBisDatum").min = offenesDatum;
+}
+document.getElementById("abbrechenKnopf").addEventListener("click", beendeBearbeitung);
+
+/* ---------- Neuer Termin / Änderungen speichern ---------- */
 document.getElementById("neuForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   if (!offenesDatum) return;
   const titel = document.getElementById("fTitel").value.trim();
   if (!titel) return;
+
+  const alt = bearbeiteId ? termine.find(t => t.id === bearbeiteId) : null;
+  const startTag = alt ? alt.datum : offenesDatum;
   let datumBis = document.getElementById("fBisDatum").value || "";
-  if (datumBis && datumBis < offenesDatum) {
+  if (datumBis && datumBis < startTag) {
     alert("Das Enddatum liegt vor dem Starttag – bitte korrigieren.");
     return;
   }
-  if (datumBis === offenesDatum) datumBis = "";
-  const neu = {
-    datum: offenesDatum,
+  if (datumBis === startTag) datumBis = "";
+
+  const felder = {
     titel,
     wer: fWer.value,
     datumBis,
     von: document.getElementById("fVon").value || "",
     bis: document.getElementById("fBis").value || "",
+  };
+
+  if (bearbeiteId && alt) {
+    // Änderungen ermitteln für den Verlauf
+    const aenderungen = [];
+    const zeitText = f => f.von ? (f.von + (f.bis ? "–" + f.bis : "")) : "ganztägig";
+    if (alt.titel !== felder.titel) aenderungen.push(`Titel: „${alt.titel}" → „${felder.titel}"`);
+    if (alt.wer !== felder.wer) aenderungen.push(`Wer: ${mitglied(alt.wer)?.name || alt.wer} → ${mitglied(felder.wer)?.name || felder.wer}`);
+    if ((alt.datumBis || "") !== felder.datumBis) {
+      aenderungen.push(`Bis-Datum: ${alt.datumBis ? kurzDatum(alt.datumBis) : "–"} → ${felder.datumBis ? kurzDatum(felder.datumBis) : "–"}`);
+    }
+    if ((alt.von || "") !== felder.von || (alt.bis || "") !== felder.bis) {
+      aenderungen.push(`Zeit: ${zeitText(alt)} → ${zeitText(felder)}`);
+    }
+    if (aenderungen.length === 0) { beendeBearbeitung(); return; }
+
+    const verlauf = [...(alt.verlauf || []), {
+      wann: new Date().toISOString(),
+      wer: angemeldetAls || "unbekannt",
+      aktion: "geändert",
+      aenderungen,
+    }];
+
+    if (!db) {
+      Object.assign(alt, felder, { verlauf });
+      zeichneMonat(); fuelleTagesListe(offenesDatum); beendeBearbeitung();
+      return;
+    }
+    try {
+      await updateDoc(doc(db, "termine", bearbeiteId), { ...felder, verlauf });
+      beendeBearbeitung();
+    } catch (f) {
+      alert("Speichern fehlgeschlagen: " + f.message);
+    }
+    return;
+  }
+
+  const neu = {
+    datum: offenesDatum,
+    ...felder,
+    verlauf: [{
+      wann: new Date().toISOString(),
+      wer: angemeldetAls || "unbekannt",
+      aktion: "erstellt",
+    }],
   };
   if (!db) {
     // Ohne Firebase: nur lokal in dieser Sitzung anzeigen
